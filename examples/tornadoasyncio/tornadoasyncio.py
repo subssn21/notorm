@@ -4,11 +4,12 @@ from tornado import gen
 import psycopg2.extras
 import aiopg
 import notorm
+from notorm.asyncio import AsyncIORecord
 import tornado.autoreload
-from tornado.platform.asyncio import AsyncIOMainLoop
+from tornado.platform.asyncio import AsyncIOMainLoop, to_tornado_future
 import asyncio
 
-class Game(notorm.AsyncRecord):
+class Game(AsyncIORecord):
     _fields = {'id':None,
                'name':None
     }
@@ -24,15 +25,16 @@ class Game(notorm.AsyncRecord):
     """
     
     @classmethod
-    @gen.coroutine
+    @asyncio.coroutine
     def get(cls, game_id):
-        cursor = yield notorm.db.execute( 
+        with (yield from notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)) as cursor:
+            yield from cursor.execute( 
                                  """select game.*::game from game where id = %(game_id)s""", 
-                                 {'game_id': game_id}, 
-                                 cursor_factory=psycopg2.extras.NamedTupleCursor)
+                                 {'game_id': game_id}
+                                 )
         
-        results = cursor.fetchall()
-        games = notorm.build_relationships(results, 'game')
+            results = yield from cursor.fetchall()
+            games = notorm.build_relationships(results, 'game')
         if not games:
             return None
         return games[0]
@@ -40,7 +42,7 @@ class Game(notorm.AsyncRecord):
     @classmethod
     @asyncio.coroutine
     def get_all(cls):
-        with (yield from notorm.db.cursor()) as cursor:
+        with (yield from notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)) as cursor:
             yield from cursor.execute( 
                                      """select game.*::game from game order by name""", 
                                      {})
@@ -60,14 +62,14 @@ class ExampleRequestHandler(tornado.web.RequestHandler):
 class MainHandler(ExampleRequestHandler):
     @gen.coroutine
     def get(self):
-        games = yield Game.get_all()
+        games = yield from Game.get_all()
         self.render("../main.html", games=games)
 
 class GameHandler(ExampleRequestHandler):
     @gen.coroutine
     def get(self, game_id=None):
         if game_id:
-            game = yield Game.get(game_id)
+            game = yield from Game.get(game_id)
         else:
             game = Game()
         self.render("../edit.html", game=game)
@@ -75,11 +77,11 @@ class GameHandler(ExampleRequestHandler):
     @gen.coroutine
     def post(self, game_id=None):
         if game_id:
-            game = yield Game.get(game_id)
+            game = yield from Game.get(game_id)
         else:
             game = Game()
         game.name = self.get_argument('name')
-        game.save()
+        yield from game.save()
         self.redirect("/")
 
 def make_app():
@@ -89,8 +91,9 @@ def make_app():
         (r"/game/([0-9]+)", GameHandler)
     ])
 
-if __name__ == "__main__":
-    tornado.platform.asyncio.AsyncIOMainLoop().install()
+@asyncio.coroutine
+def db_setup():
+    print("DB Setup")
     notorm.db = yield from aiopg.create_pool("dbname=notorm_example user=mrobellard")
 
     #We have to use a regular psycopg connection to register the extensions
@@ -99,7 +102,13 @@ if __name__ == "__main__":
     
     psycopg2.extras.register_composite('game', conn, globally=True, factory = GameComposite)
     conn.close()
+
+if __name__ == "__main__":
+    tornado.platform.asyncio.AsyncIOMainLoop().install()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(db_setup())
     app = make_app()
     app.listen(8888)
-    tornado.autoreload.start(tornado.ioloop.IOLoop.current())
-    asyncio.get_event_loop().run_forever()
+    
+    #tornado.autoreload.start(tornado.ioloop.IOLoop.current())
+    loop.run_forever()

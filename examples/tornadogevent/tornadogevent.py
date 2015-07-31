@@ -1,3 +1,7 @@
+# Do this as early as possible in your application:
+from gevent import monkey; monkey.patch_all()
+ 
+import gevent
 import tornado.ioloop
 import tornado.web
 import psycopg2.extras
@@ -55,26 +59,35 @@ class ExampleRequestHandler(tornado.web.RequestHandler):
         return super(ExampleRequestHandler, self).log_exception(typ, value, tb)
 
 class MainHandler(ExampleRequestHandler):
+    @tornado.web.asynchronous
     def get(self):
-        games = Game.get_all()
-        self.render("../main.html", games=games)
+        def async_task():
+            games = Game.get_all()
+            self.render("../main.html", games=games)
+        gevent.spawn(async_task)
 
 class GameHandler(ExampleRequestHandler):
+    @tornado.web.asynchronous
     def get(self, game_id=None):
-        if game_id:
-            game = Game.get(game_id)
-        else:
-            game = Game()
-        self.render("../edit.html", game=game)
+        def async_task():
+            if game_id:
+                game = Game.get(game_id)
+            else:
+                game = Game()
+            self.render("../edit.html", game=game)
+        gevent.spawn(async_task)
     
+    @tornado.web.asynchronous
     def post(self, game_id=None):
-        if game_id:
-            game = Game.get(game_id)
-        else:
-            game = Game()
-        game.name = self.get_argument('name')
-        game.save()
-        self.redirect("/")
+        def async_task():
+            if game_id:
+                game = Game.get(game_id)
+            else:
+                game = Game()
+            game.name = self.get_argument('name')
+            game.save()
+            self.redirect("/")
+        gevent.spawn(async_task)
 
 def make_app():
     return tornado.web.Application([

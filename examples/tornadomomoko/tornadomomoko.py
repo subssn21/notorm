@@ -4,9 +4,10 @@ from tornado import gen
 import psycopg2.extras
 import momoko
 import notorm
+from notorm.momoko import AsyncRecord
 import tornado.autoreload
 
-class Game(notorm.AsyncRecord):
+class Game(AsyncRecord):
     _fields = {'id':None,
                'name':None
     }

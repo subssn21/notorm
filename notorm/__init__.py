@@ -1,11 +1,8 @@
-
 import psycopg2
 from collections import OrderedDict, namedtuple, defaultdict
 import copy
 import datetime
 import inspect
-import momoko
-from tornado import gen
 
 db = None
 
@@ -124,31 +121,6 @@ class record(object):
             results = cursor.fetchone()
             if results:
                 self.id = results[0]
-
-class AsyncRecord(record):
-    @gen.coroutine
-    def update(self, **args):
-        for k,v in args.items():
-            setattr(self, k, v)
-        
-        cursor = yield db.execute( 
-                                self.update_qry, 
-                                self._asdict(), 
-                                cursor_factory=psycopg2.extras.NamedTupleCursor)        
-        
-    @gen.coroutine
-    def save(self):
-        if self.id:
-            self.update()
-        else:
-            cursor = yield db.execute(
-                                    self.insert_qry, 
-                                    self.__dict__, 
-                                    cursor_factory=psycopg2.extras.NamedTupleCursor)        
-            results = cursor.fetchone()
-            if results:
-                self.id = results[0]
-
 
 def json_default(obj):
     if isinstance(obj, record):
