@@ -1,12 +1,10 @@
 import tornado.ioloop
 import tornado.web
-from tornado import gen
 import psycopg2.extras
-import momoko
 import notorm
 import tornado.autoreload
 
-class Game(notorm.AsyncRecord):
+class Game(notorm.record):
     _fields = {'id':None,
                'name':None
     }
@@ -22,12 +20,10 @@ class Game(notorm.AsyncRecord):
     """
     
     @classmethod
-    @gen.coroutine
     def get(cls, game_id):
-        cursor = yield notorm.db.execute( 
-                                 """select game.*::game from game where id = %(game_id)s""", 
-                                 {'game_id': game_id}, 
-                                 cursor_factory=psycopg2.extras.NamedTupleCursor)
+        cursor = notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
+        cursor.execute("""select game.*::game from game where id = %(game_id)s""", 
+                                 {'game_id': game_id})
         
         results = cursor.fetchall()
         games = notorm.build_relationships(results, 'game')
@@ -36,12 +32,9 @@ class Game(notorm.AsyncRecord):
         return games[0]
     
     @classmethod
-    @gen.coroutine
     def get_all(cls):
-        cursor = yield notorm.db.execute( 
-                                 """select game.*::game from game order by name""", 
-                                 {}, 
-                                 cursor_factory=psycopg2.extras.NamedTupleCursor)
+        cursor = notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
+        cursor.execute("""select game.*::game from game order by name""")
         
         results = cursor.fetchall()
         games = notorm.build_relationships(results, 'game')
@@ -53,27 +46,30 @@ class GameComposite(psycopg2.extras.CompositeCaster):
         return Game(**d)
     
 class ExampleRequestHandler(tornado.web.RequestHandler):
-    pass
+    def on_finish(self):
+        notorm.db.commit()
+
+    def log_exception(self, typ, value, tb):
+        print("Exception")
+        notorm.db.rollback()
+        return super(ExampleRequestHandler, self).log_exception(typ, value, tb)
 
 class MainHandler(ExampleRequestHandler):
-    @gen.coroutine
     def get(self):
-        games = yield Game.get_all()
+        games = Game.get_all()
         self.render("../main.html", games=games)
 
 class GameHandler(ExampleRequestHandler):
-    @gen.coroutine
     def get(self, game_id=None):
         if game_id:
-            game = yield Game.get(game_id)
+            game = Game.get(game_id)
         else:
             game = Game()
         self.render("../edit.html", game=game)
     
-    @gen.coroutine
     def post(self, game_id=None):
         if game_id:
-            game = yield Game.get(game_id)
+            game = Game.get(game_id)
         else:
             game = Game()
         game.name = self.get_argument('name')
@@ -88,19 +84,10 @@ def make_app():
     ])
 
 if __name__ == "__main__":
-    notorm.db = momoko.Pool(
-            dsn="dbname=notorm_example user=mrobellard"
-            )
-    future = notorm.db.connect()
-    tornado.ioloop.IOLoop.current().add_future(future, lambda f: tornado.ioloop.IOLoop.current().stop())
-    tornado.ioloop.IOLoop.current().start()        
+    notorm.db = psycopg2.connect("dbname=notorm_example user=mrobellard")
 
-    #We have to use a regular psycopg connection to register the extensions
-    #This can be done through Momoko, I just haven't spent enough time on it.
-    conn = psycopg2.connect(dsn="dbname=notorm_example user=mrobellard")
-    
-    psycopg2.extras.register_composite('game', conn, globally=True, factory = GameComposite)
-    conn.close()
+    cursor = notorm.db.cursor()
+    psycopg2.extras.register_composite('game', cursor, globally=True, factory = GameComposite)
     app = make_app()
     app.listen(8888)
     tornado.autoreload.start(tornado.ioloop.IOLoop.current())

@@ -80,7 +80,7 @@ class record(object):
         return self._fields[name]
 
     def update(self, **args):
-        for k,v in args.iteritems():
+        for k,v in args.items():
             setattr(self, k, v)
         
         cursor = db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
@@ -128,23 +128,23 @@ class record(object):
 class AsyncRecord(record):
     @gen.coroutine
     def update(self, **args):
-        for k,v in args.iteritems():
+        for k,v in args.items():
             setattr(self, k, v)
         
-        cursor = yield momoko.Op(models.db.execute, 
-                                         self.update_qry, 
-                                         self._asdict(), 
-                                         cursor_factory=psycopg2.extras.NamedTupleCursor)        
+        cursor = yield db.execute( 
+                                self.update_qry, 
+                                self._asdict(), 
+                                cursor_factory=psycopg2.extras.NamedTupleCursor)        
         
     @gen.coroutine
     def save(self):
         if self.id:
             self.update()
         else:
-            cursor = yield momoko.Op(models.db.execute, 
-                                             self.insert_qry, 
-                                             self.__dict__, 
-                                             cursor_factory=psycopg2.extras.NamedTupleCursor)        
+            cursor = yield db.execute(
+                                    self.insert_qry, 
+                                    self.__dict__, 
+                                    cursor_factory=psycopg2.extras.NamedTupleCursor)        
             results = cursor.fetchone()
             if results:
                 self.id = results[0]

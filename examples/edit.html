@@ -1,0 +1,14 @@
+<html>
+   <head>
+      <title>NOT ORM EXAMPLES</title>
+   </head>
+   <body>
+      <h1>Edit Game</h1>
+      <form method="POST">
+         {% module xsrf_form_html() %}
+          <label>Name: </label>
+          <input required type="text" name="name" value="{{game.name if game.name else ''}}">
+          <button type="submit">Submit</button>
+      </form>
+   </body>
+ </html>

@@ -2,9 +2,11 @@ import tornado.ioloop
 import tornado.web
 from tornado import gen
 import psycopg2.extras
-import momoko
+import aiopg
 import notorm
 import tornado.autoreload
+from tornado.platform.asyncio import AsyncIOMainLoop
+import asyncio
 
 class Game(notorm.AsyncRecord):
     _fields = {'id':None,
@@ -36,15 +38,15 @@ class Game(notorm.AsyncRecord):
         return games[0]
     
     @classmethod
-    @gen.coroutine
+    @asyncio.coroutine
     def get_all(cls):
-        cursor = yield notorm.db.execute( 
-                                 """select game.*::game from game order by name""", 
-                                 {}, 
-                                 cursor_factory=psycopg2.extras.NamedTupleCursor)
-        
-        results = cursor.fetchall()
-        games = notorm.build_relationships(results, 'game')
+        with (yield from notorm.db.cursor()) as cursor:
+            yield from cursor.execute( 
+                                     """select game.*::game from game order by name""", 
+                                     {})
+            
+            results = yield from cursor.fetchall()
+            games = notorm.build_relationships(results, 'game')
         return games
         
 class GameComposite(psycopg2.extras.CompositeCaster):
@@ -88,12 +90,8 @@ def make_app():
     ])
 
 if __name__ == "__main__":
-    notorm.db = momoko.Pool(
-            dsn="dbname=notorm_example user=mrobellard"
-            )
-    future = notorm.db.connect()
-    tornado.ioloop.IOLoop.current().add_future(future, lambda f: tornado.ioloop.IOLoop.current().stop())
-    tornado.ioloop.IOLoop.current().start()        
+    tornado.platform.asyncio.AsyncIOMainLoop().install()
+    notorm.db = yield from aiopg.create_pool("dbname=notorm_example user=mrobellard")
 
     #We have to use a regular psycopg connection to register the extensions
     #This can be done through Momoko, I just haven't spent enough time on it.
@@ -104,4 +102,4 @@ if __name__ == "__main__":
     app = make_app()
     app.listen(8888)
     tornado.autoreload.start(tornado.ioloop.IOLoop.current())
-    tornado.ioloop.IOLoop.current().start()
+    asyncio.get_event_loop().run_forever()

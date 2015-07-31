@@ -1,0 +1,14 @@
+<html>
+   <head>
+      <title>NOT ORM EXAMPLES</title>
+   </head>
+   <body>
+     <a href="/game/new">New Game</a>   
+   
+     <ul>
+       {% for game in games %}
+         <li><a href="/game/{{game.id}}">{{ escape(game.name) }}</a></li>
+       {% end %}
+     </ul>
+   </body>
+ </html>
