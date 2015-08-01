@@ -1,6 +1,6 @@
 # Do this as early as possible in your application:
 from gevent import monkey; monkey.patch_all()
- 
+
 import gevent
 import tornado.ioloop
 import tornado.web
@@ -12,43 +12,43 @@ class Game(notorm.record):
     _fields = {'id':None,
                'name':None
     }
-    
+
     insert_qry = """
     insert into game (name)
     values(%(name)s)
     returning id
     """
-    
+
     update_qry = """
     update game set name=%(name)s where id = %(id)s
     """
-    
+
     @classmethod
     def get(cls, game_id):
         cursor = notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
-        cursor.execute("""select game.*::game from game where id = %(game_id)s""", 
+        cursor.execute("""select game.*::game from game where id = %(game_id)s""",
                                  {'game_id': game_id})
-        
+
         results = cursor.fetchall()
         games = notorm.build_relationships(results, 'game')
         if not games:
             return None
         return games[0]
-    
+
     @classmethod
     def get_all(cls):
         cursor = notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
         cursor.execute("""select game.*::game from game order by name""")
-        
+
         results = cursor.fetchall()
         games = notorm.build_relationships(results, 'game')
         return games
-        
+
 class GameComposite(psycopg2.extras.CompositeCaster):
     def make(self, values):
         d = dict(zip(self.attnames, values))
         return Game(**d)
-    
+
 class ExampleRequestHandler(tornado.web.RequestHandler):
     def on_finish(self):
         notorm.db.commit()
@@ -76,7 +76,7 @@ class GameHandler(ExampleRequestHandler):
                 game = Game()
             self.render("../edit.html", game=game)
         gevent.spawn(async_task)
-    
+
     @tornado.web.asynchronous
     def post(self, game_id=None):
         def async_task():
@@ -97,7 +97,7 @@ def make_app():
     ])
 
 if __name__ == "__main__":
-    notorm.db = psycopg2.connect("dbname=notorm_example user=mrobellard")
+    notorm.db = psycopg2.connect("dbname=notorm_example user=dbuser")
 
     cursor = notorm.db.cursor()
     psycopg2.extras.register_composite('game', cursor, globally=True, factory = GameComposite)
