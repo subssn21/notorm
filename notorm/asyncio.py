@@ -30,3 +30,12 @@ class AsyncIORecord(notorm.record):
                     self.id = results[0]
         return
 
+    @classmethod
+    @asyncio.coroutine
+    def delete(cls, game_config_id):
+        with (yield from notorm.db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)) as cursor:
+            yield from cursor.execute(
+                            cls.delete_qry,
+                            {'id':game_config_id}
+                            )
+        return
