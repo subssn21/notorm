@@ -33,6 +33,22 @@ class ForeignKeyList(ForeignKey):
             elif next_node is not None and hasattr(next_node, 'build_relationships'):
                 next_node.build_relationships(r, last_r, getattr(set_node, attr_name)[-1])
         
+class ForeignKeyDefaultDict(ForeignKey):
+    def __init__(self, column_name, group_field, data_type, build=True):
+        super(ForeignKeyDefaultDict, self).__init__(column_name, build=build)
+        self.group_field = group_field
+        self.data_type = data_type
+
+    def build_relationships(self, attr_name, r, last_r, set_node = None):
+        if hasattr(r, self.column_name):
+            next_node = getattr(r, self.column_name)
+            if next_node is not None and (last_r is None or next_node != getattr(last_r, self.column_name)):
+                getattr(set_node, attr_name)[getattr(next_node, self.group_field)] = next_node
+                if hasattr(next_node, 'build_relationships') and self.build:
+                    next_node.build_relationships(r, None)
+            elif next_node is not None and hasattr(next_node, 'build_relationships'):
+                next_node.build_relationships(r, last_r, getattr(set_node, attr_name)[getattr(next_node, self.group_field)])
+
 class ForeignKeyObject(ForeignKey):
     def build_relationships(self, attr_name, r, last_r, set_node = None):
         if hasattr(r, self.column_name) and getattr(r, self.column_name) is not None:
@@ -46,6 +62,7 @@ class ForeignKeyDictList(ForeignKey):
     def __init__(self, column_name, group_field, build=True):
         super(ForeignKeyDictList, self).__init__(column_name, build=build)
         self.group_field = group_field
+
     def build_relationships(self, attr_name, r, last_r, set_node = None):
         if hasattr(r, self.column_name):
             next_node = getattr(r, self.column_name)
@@ -58,7 +75,11 @@ class ForeignKeyDictList(ForeignKey):
 
 class record(object):
     def __init__(self, **args):
-        self.__dict__.update(self._fields)
+        for field, value in self._fields.items():
+            if value in (dict, list, set):
+                self.__dict__[field] = args.get(field, value())
+            else:
+                self.__dict__[field] = args.get(field, value)
 
         for attr_name, attr_value in inspect.getmembers(self.__class__):
             if isinstance(attr_value, ForeignKeyList):
@@ -67,8 +88,8 @@ class record(object):
                 self.__dict__[attr_name] = None
             if isinstance(attr_value, ForeignKeyDictList):
                 self.__dict__[attr_name] = defaultdict(list)
-        
-        self.__dict__.update(args)
+            if isinstance(attr_value, ForeignKeyDefaultDict):
+                self.__dict__[attr_name] = defaultdict(attr_value.data_type)
 
     def _asdict(self):
         return self.__dict__
