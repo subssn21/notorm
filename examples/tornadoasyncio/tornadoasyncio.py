@@ -112,3 +112,4 @@ if __name__ == "__main__":
 
     #tornado.autoreload.start(tornado.ioloop.IOLoop.current())
     loop.run_forever()
+    loop.close()
