@@ -58,7 +58,11 @@ class ForeignKeyDictList(ForeignKey):
 
 class record(object):
     def __init__(self, **args):
-        self.__dict__.update(self._fields)
+        for field, value in self._fields.items():
+            if value in (dict, list, set):
+                self.__dict__[field] = args.get(field, value())
+            else:
+                self.__dict__[field] = args.get(field, value)
 
         for attr_name, attr_value in inspect.getmembers(self.__class__):
             if isinstance(attr_value, ForeignKeyList):
@@ -67,14 +71,15 @@ class record(object):
                 self.__dict__[attr_name] = None
             if isinstance(attr_value, ForeignKeyDictList):
                 self.__dict__[attr_name] = defaultdict(list)
-        
-        self.__dict__.update(args)
 
     def _asdict(self):
         return self.__dict__
     
     def __getattr__(self, name):
-        return self._fields[name]
+        try:
+            return self._fields[name]
+        except KeyError:
+            raise AttributeError("Field not Defined: %s" % name)
 
     def update(self, **args):
         for k,v in args.items():
@@ -100,6 +105,11 @@ class record(object):
         else:
             cls.insert(**args)
 
+    @classmethod
+    def loads(cls, data_string):
+        data = json.loads(data_string)
+        return cls(**data)
+
     def build_relationships(self, r, last_r, set_node = None):
         """
         r: The Record from the database
@@ -122,7 +132,17 @@ class record(object):
             if results:
                 self.id = results[0]
 
+    def on_insert(self):
+        pass
+
+
+    def dumps(self):
+        return json_dumps(self)
+
+
 def json_default(obj):
+    if isinstance(obj, Decimal):
+        return str(obj)
     if isinstance(obj, record):
         return obj.__dict__
     if isinstance(obj, datetime.time):
@@ -131,6 +151,22 @@ def json_default(obj):
         return str(obj)
     if isinstance(obj, datetime.date):
         return str(obj)
+    if isinstance(obj, DateTimeRange):
+        return {'lower': obj.lower, 'upper': obj.upper}
+    if isinstance(obj, bytes):
+        return obj.decode('utf-8')
+    if isinstance(obj, jsonable):
+        return obj.__dict__
+    if isinstance(obj, set):
+        return list(obj)
+
+    raise TypeError("Can' convert Object to JSON")
+
+
+def json_dumps(obj, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None,
+               separators=None, encoding="utf-8", default=None, sort_keys=False, **kw):
+    out = json.dumps(obj, default=json_default)
+    return out
 
 def build_relationships(results, root_class):
     r_list = []
