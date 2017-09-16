@@ -5,8 +5,12 @@ import inspect
 import json
 from decimal import Decimal
 from psycopg2.extras import DateTimeRange
+import weakref
 
 db = None
+
+class jsonable(object):
+    pass
 
 class InfDateAdapter:
     def __init__(self, wrapped):
@@ -25,11 +29,18 @@ class ForeignKey(object):
         self.build = build
 
 class ForeignKeyList(ForeignKey):
+    def __init__(self, column_name, build=True, reverse=None):
+        super(ForeignKeyList, self).__init__(column_name, build=build)
+        self.reverse = reverse
+
     def build_relationships(self, attr_name, r, last_r, set_node = None):
         if hasattr(r, self.column_name):
             next_node = getattr(r, self.column_name)
             if next_node is not None and (last_r is None or next_node != getattr(last_r, self.column_name)):
                 getattr(set_node, attr_name).append(next_node)
+                if self.reverse:
+                    setattr(next_node, "_" + self.reverse, weakref.ref(set_node))
+
                 if hasattr(next_node, 'build_relationships') and self.build:
                     next_node.build_relationships(r, None)
             elif next_node is not None and hasattr(next_node, 'build_relationships'):
@@ -97,10 +108,9 @@ class record(object):
         return self.__dict__
     
     def __getattr__(self, name):
-        try:
-            return self._fields[name]
-        except KeyError:
+        if not name in self._fields:
             raise AttributeError("Field not Defined: %s" % name)
+        return self._fields[name]
 
     def update(self, **args):
         for k,v in args.items():
@@ -165,7 +175,7 @@ def json_default(obj):
     if isinstance(obj, Decimal):
         return str(obj)
     if isinstance(obj, record):
-        return obj.__dict__
+        return obj._asdict()
     if isinstance(obj, datetime.time):
         return str(obj)
     if isinstance(obj, datetime.datetime):
@@ -176,12 +186,16 @@ def json_default(obj):
         return {'lower': obj.lower, 'upper': obj.upper}
     if isinstance(obj, bytes):
         return obj.decode('utf-8')
+    if isinstance(obj, defaultdict):
+        return dict(obj)
     if isinstance(obj, jsonable):
         return obj.__dict__
     if isinstance(obj, set):
         return list(obj)
+    if isinstance(obj, weakref.ref):
+        return obj().key
 
-    raise TypeError("Can' convert Object to JSON")
+    raise TypeError("Can't convert Object to JSON")
 
 
 def json_dumps(obj, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None,
